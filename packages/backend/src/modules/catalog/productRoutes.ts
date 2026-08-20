@@ -71,4 +71,31 @@ export async function productRoutes(app: FastifyInstance): Promise<void> {
     const { id } = idParamSchema.parse(request.params);
     return productService.deactivate(id);
   });
+
+  // Lotes: obrigatorios para movimentar produtos com trackingMode
+  // BATCH/SERIAL (ver StockLedgerService.assertProductAndBatch).
+  app.get("/products/:id/batches", { preHandler: requirePermission("catalog.product.read") }, async (request) => {
+    const { id } = idParamSchema.parse(request.params);
+    return tenantDb().batch.findMany({ where: { productId: id }, orderBy: { expirationDate: "asc" } });
+  });
+
+  app.post("/products/:id/batches", { preHandler: requirePermission("catalog.product.write") }, async (request, reply) => {
+    const { id } = idParamSchema.parse(request.params);
+    const body = z
+      .object({ code: z.string().min(1).max(60), expirationDate: z.string().datetime().optional() })
+      .parse(request.body);
+
+    const product = await tenantDb().product.findUnique({ where: { id } });
+    if (!product) throw AppError.notFound("Produto nao encontrado");
+
+    const existing = await tenantDb().batch.findUnique({
+      where: { productId_code: { productId: id, code: body.code } },
+    });
+    if (existing) throw AppError.conflict(`Ja existe o lote "${body.code}" para este produto`);
+
+    const batch = await tenantDb().batch.create({
+      data: { productId: id, code: body.code, expirationDate: body.expirationDate ? new Date(body.expirationDate) : null },
+    });
+    reply.status(201).send(batch);
+  });
 }

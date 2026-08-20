@@ -37,6 +37,18 @@ export function errorHandler(
     return;
   }
 
+  // Outros erros nativos do Fastify (ex.: FST_ERR_CTP_EMPTY_JSON_BODY,
+  // payload malformado, limite de tamanho) ja vem com statusCode proprio —
+  // respeitar em vez de mascarar tudo como 500. So o que realmente nao tem
+  // statusCode conhecido cai no 500 generico abaixo.
+  if ("statusCode" in error && typeof error.statusCode === "number" && error.statusCode < 500) {
+    const body: ApiErrorBody = {
+      error: { code: "VALIDATION_FAILED", message: error.message },
+    };
+    reply.status(error.statusCode).send(body);
+    return;
+  }
+
   logger.error({ err: error, reqId: request.id }, "erro nao tratado");
   const body: ApiErrorBody = {
     error: { code: "INTERNAL_ERROR", message: "Erro interno do servidor" },

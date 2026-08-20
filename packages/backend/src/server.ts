@@ -15,13 +15,26 @@ import { unitOfMeasureRoutes } from "./modules/catalog/unitOfMeasureRoutes.js";
 import { categoryRoutes } from "./modules/catalog/categoryRoutes.js";
 import { productRoutes } from "./modules/catalog/productRoutes.js";
 import { supplierRoutes } from "./modules/catalog/supplierRoutes.js";
+import { inventoryRoutes } from "./modules/inventory/inventoryRoutes.js";
+import { reservationRoutes } from "./modules/inventory/reservationRoutes.js";
+import { inventoryCountRoutes } from "./modules/inventory/inventoryCountRoutes.js";
 
 async function buildServer() {
   const app = Fastify({ loggerInstance: logger, trustProxy: true });
 
   await app.register(helmet);
   await app.register(cors, { origin: config.CORS_ORIGIN, credentials: true });
-  await app.register(rateLimit, { max: 100, timeWindow: "1 minute" });
+  await app.register(rateLimit, {
+    max: config.RATE_LIMIT_MAX,
+    timeWindow: config.RATE_LIMIT_WINDOW,
+    // Por usuario autenticado quando houver token, senao por IP — assim um
+    // operador ocupado (ou o mesmo NAT/proxy) nao consome o orcamento de
+    // outro usuario nem de outra empresa.
+    keyGenerator: (request) => {
+      const auth = request.headers.authorization;
+      return auth ?? request.ip;
+    },
+  });
 
   app.setErrorHandler(errorHandler);
 
@@ -38,6 +51,9 @@ async function buildServer() {
   await app.register(categoryRoutes, { prefix: "/api/catalog" });
   await app.register(productRoutes, { prefix: "/api/catalog" });
   await app.register(supplierRoutes, { prefix: "/api/catalog" });
+  await app.register(inventoryRoutes, { prefix: "/api/inventory" });
+  await app.register(reservationRoutes, { prefix: "/api/inventory" });
+  await app.register(inventoryCountRoutes, { prefix: "/api/inventory" });
 
   return app;
 }

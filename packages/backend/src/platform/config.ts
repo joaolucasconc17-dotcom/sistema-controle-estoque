@@ -38,6 +38,12 @@ const envSchema = z.object({
   TENANT_POOL_MAX_CLIENTS: z.coerce.number().int().min(1).default(50),
   TENANT_POOL_IDLE_MS: z.coerce.number().int().min(1000).default(300_000),
   TENANT_CONNECTION_LIMIT: z.coerce.number().int().min(1).default(5),
+
+  // Operacao de deposito real (leitor de codigo de barras, PWA offline
+  // sincronizando fila) sustenta rajadas bem acima de requisicoes humanas
+  // avulsas — 100/min e baixo demais e derruba operador legitimo com 429.
+  RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(600),
+  RATE_LIMIT_WINDOW: z.string().default("1 minute"),
 });
 
 function loadConfig() {
