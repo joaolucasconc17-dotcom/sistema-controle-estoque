@@ -1,0 +1,44 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: estoque_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-estoque}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-estoque_dev_pwd}
+      POSTGRES_DB: ${CONTROL_DB_NAME:-estoque_control}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-estoque}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    # Banco por empresa multiplica conexoes: cada tenant quente abre seu proprio pool.
+    # O limite abaixo dialoga com TENANT_POOL_MAX_CLIENTS no backend.
+    command:
+      - "postgres"
+      - "-c"
+      - "max_connections=300"
+      - "-c"
+      - "shared_buffers=256MB"
+
+  redis:
+    image: redis:7-alpine
+    container_name: estoque_redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  postgres_data:
+  redis_data:

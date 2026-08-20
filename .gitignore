@@ -1,0 +1,26 @@
+.claude/
+node_modules/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Prisma gera clients separados para control plane e tenant
+packages/backend/src/generated/
+
+logs/
+*.log
+npm-debug.log*
+
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+packages/frontend/dev-dist/

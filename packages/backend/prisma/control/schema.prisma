@@ -1,0 +1,111 @@
+// Control plane: o catalogo de empresas. Um unico banco para o sistema
+// inteiro. Nenhum dado de negocio do cliente mora aqui — apenas o suficiente
+// para saber quem e cada empresa e onde fica o banco dela.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../../src/generated/control"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("CONTROL_DATABASE_URL")
+}
+
+enum TenantStatus {
+  PROVISIONING
+  ACTIVE
+  SUSPENDED
+  DEACTIVATED
+}
+
+enum TenantMigrationState {
+  PENDING
+  RUNNING
+  DONE
+  FAILED
+}
+
+model Tenant {
+  id        String       @id @default(uuid())
+  slug      String       @unique
+  name      String
+  status    TenantStatus @default(PROVISIONING)
+  planCode  String       @default("trial")
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  dataSource      TenantDataSource?
+  lookups         TenantLookup[]
+  migrationStates TenantMigrationStatus[]
+  auditEntries    PlatformAudit[]
+
+  @@map("tenant")
+}
+
+/// Connection string cifrada do banco desta empresa. Guardada separada do
+/// Tenant para poder restringir leitura desta tabela a poucos servicos.
+model TenantDataSource {
+  id                  String   @id @default(uuid())
+  tenantId            String   @unique
+  tenant              Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  encryptedUrl        String
+  /// hash/versao da chave usada para cifrar — permite rotacionar a chave sem
+  /// quebrar tenants cifrados com a chave anterior
+  encryptionKeyVersion Int     @default(1)
+  host                String
+  databaseName        String
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@map("tenant_data_source")
+}
+
+/// Resolve email -> tenant no login, antes de sabermos qual banco abrir.
+/// Um mesmo email pode existir em mais de um tenant (mesma pessoa, duas
+/// empresas clientes distintas).
+model TenantLookup {
+  id        String   @id @default(uuid())
+  email     String
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([email, tenantId])
+  @@index([email])
+  @@map("tenant_lookup")
+}
+
+/// Estado de migration por tenant. O runner em N bancos le esta tabela para
+/// saber onde parou e retomar sem re-executar tenants ja migrados.
+model TenantMigrationStatus {
+  id            String                @id @default(uuid())
+  tenantId      String
+  tenant        Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  migrationName String
+  state         TenantMigrationState  @default(PENDING)
+  errorMessage  String?
+  startedAt     DateTime?
+  finishedAt    DateTime?
+  createdAt     DateTime              @default(now())
+
+  @@unique([tenantId, migrationName])
+  @@index([state])
+  @@map("tenant_migration_status")
+}
+
+/// Trilha de auditoria de operacoes de plataforma: provisionamento,
+/// suspensao, acesso de suporte a um tenant. Separada do audit_log de
+/// negocio (que vive dentro de cada banco de tenant).
+model PlatformAudit {
+  id        String   @id @default(uuid())
+  tenantId  String?
+  tenant    Tenant?  @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  actor     String
+  action    String
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([tenantId])
+  @@map("platform_audit")
+}

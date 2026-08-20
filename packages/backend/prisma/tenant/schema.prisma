@@ -1,0 +1,506 @@
+// Tenant plane: schema de negocio. Este MESMO schema e aplicado em um banco
+// Postgres separado para CADA empresa cliente (estrategia de isolamento
+// "banco por empresa"). Nao ha coluna tenant_id aqui dentro — o isolamento
+// e o proprio banco, garantido pelo TenantConnectionManager que so abre a
+// conexao correta para quem esta autenticado naquela empresa.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../../src/generated/tenant"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("TENANT_DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// IAM
+// ---------------------------------------------------------------------------
+
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  roles         UserRole[]
+  refreshTokens RefreshToken[]
+  auditEntries  AuditLog[]
+
+  @@map("app_user")
+}
+
+model Role {
+  id        String   @id @default(uuid())
+  code      String   @unique // OWNER, ADMIN, GERENTE_ESTOQUE, OPERADOR, LEITURA
+  name      String
+  createdAt DateTime @default(now())
+
+  users       UserRole[]
+  permissions RolePermission[]
+
+  @@map("role")
+}
+
+model Permission {
+  id   String @id @default(uuid())
+  code String @unique // ex: inventory.movement.create
+
+  roles RolePermission[]
+
+  @@map("permission")
+}
+
+model RolePermission {
+  roleId       String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permissionId String
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permission")
+}
+
+model UserRole {
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roleId String
+  role   Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@map("user_role")
+}
+
+/// Refresh tokens rotativos: cada uso gera um novo e invalida o anterior.
+/// Reaparecer um token ja consumido (`revokedAt` preenchido) indica furto —
+/// o backend derruba toda a familia de tokens daquele usuario.
+model RefreshToken {
+  id             String    @id @default(uuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash      String    @unique
+  familyId       String
+  expiresAt      DateTime
+  revokedAt      DateTime?
+  replacedByHash String?
+  createdAt      DateTime  @default(now())
+
+  @@index([userId])
+  @@index([familyId])
+  @@map("refresh_token")
+}
+
+// ---------------------------------------------------------------------------
+// Organizacao
+// ---------------------------------------------------------------------------
+
+model CompanyUnit {
+  id     String  @id @default(uuid())
+  name   String
+  code   String  @unique
+  active Boolean @default(true)
+
+  warehouses Warehouse[]
+
+  @@map("company_unit")
+}
+
+model Warehouse {
+  id            String  @id @default(uuid())
+  companyUnitId String
+  companyUnit   CompanyUnit @relation(fields: [companyUnitId], references: [id])
+  name          String
+  code          String
+  active        Boolean @default(true)
+
+  locations        StorageLocation[]
+  balances         StockBalance[]
+  movements        StockMovement[] @relation("MovementWarehouse")
+  reservations      StockReservation[]
+  inventoryCounts   InventoryCount[]
+  purchaseOrders    PurchaseOrder[]
+
+  @@unique([companyUnitId, code])
+  @@map("warehouse")
+}
+
+model StorageLocation {
+  id          String    @id @default(uuid())
+  warehouseId String
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
+  code        String
+
+  @@unique([warehouseId, code])
+  @@map("storage_location")
+}
+
+// ---------------------------------------------------------------------------
+// Catalogo
+// ---------------------------------------------------------------------------
+
+model UnitOfMeasure {
+  id   String @id @default(uuid())
+  code String @unique
+  name String
+
+  products Product[]
+
+  @@map("unit_of_measure")
+}
+
+model Category {
+  id       String     @id @default(uuid())
+  name     String
+  parentId String?
+  parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children Category[] @relation("CategoryTree")
+
+  products Product[]
+
+  @@map("category")
+}
+
+enum TrackingMode {
+  NONE
+  BATCH
+  SERIAL
+}
+
+model Product {
+  id               String       @id @default(uuid())
+  sku              String       @unique
+  name             String
+  categoryId       String?
+  category         Category?    @relation(fields: [categoryId], references: [id])
+  unitOfMeasureId  String
+  unitOfMeasure    UnitOfMeasure @relation(fields: [unitOfMeasureId], references: [id])
+  trackingMode     TrackingMode @default(NONE)
+  costPrice        Decimal?     @db.Decimal(18, 4)
+  salePrice        Decimal?     @db.Decimal(18, 4)
+  minStock         Decimal?     @db.Decimal(18, 4)
+  maxStock         Decimal?     @db.Decimal(18, 4)
+  reorderPoint     Decimal?     @db.Decimal(18, 4)
+  leadTimeDays     Int?
+  active           Boolean      @default(true)
+
+  // Campos fiscais brasileiros — presentes, nao usados ate a fase de NF-e.
+  ncm               String?
+  cest              String?
+  origem            String?
+  cstIcms           String?
+  cfopPadrao        String?
+  unidadeTributavel String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  barcodes         ProductBarcode[]
+  suppliers        ProductSupplier[]
+  batches          Batch[]
+  serialUnits      SerialUnit[]
+  balances         StockBalance[]
+  movements        StockMovement[]
+  reservations     StockReservation[]
+  countItems       InventoryCountItem[]
+  purchaseOrderItems PurchaseOrderItem[]
+
+  @@index([active])
+  @@map("product")
+}
+
+model ProductBarcode {
+  id        String  @id @default(uuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  barcode   String  @unique
+
+  @@map("product_barcode")
+}
+
+model Supplier {
+  id         String  @id @default(uuid())
+  legalName  String
+  tradeName  String?
+  document   String  @unique
+  email      String?
+  phone      String?
+  active     Boolean @default(true)
+
+  products       ProductSupplier[]
+  purchaseOrders PurchaseOrder[]
+
+  @@map("supplier")
+}
+
+model ProductSupplier {
+  productId        String
+  product          Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  supplierId       String
+  supplier         Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  supplierSku      String?
+  lastPurchaseCost Decimal? @db.Decimal(18, 4)
+  updatedAt        DateTime @updatedAt
+
+  @@id([productId, supplierId])
+  @@map("product_supplier")
+}
+
+// ---------------------------------------------------------------------------
+// Estoque — o coracao do sistema
+// ---------------------------------------------------------------------------
+
+model Batch {
+  id             String    @id @default(uuid())
+  productId      String
+  product        Product   @relation(fields: [productId], references: [id])
+  code           String
+  expirationDate DateTime?
+  createdAt      DateTime  @default(now())
+
+  balances  StockBalance[]
+  movements StockMovement[]
+
+  @@unique([productId, code])
+  @@index([expirationDate])
+  @@map("batch")
+}
+
+model SerialUnit {
+  id        String   @id @default(uuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id])
+  serial    String
+  status    String   @default("IN_STOCK") // IN_STOCK, SOLD, RESERVED
+  createdAt DateTime @default(now())
+
+  @@unique([productId, serial])
+  @@map("serial_unit")
+}
+
+/// Saldo materializado por (produto, deposito, lote). Lido em O(1) — nunca
+/// precisa somar o historico de stock_movement para responder "quanto tem".
+/// Atualizado dentro da MESMA transacao que grava o movimento.
+model StockBalance {
+  id          String    @id @default(uuid())
+  productId   String
+  product     Product   @relation(fields: [productId], references: [id])
+  warehouseId String
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
+  batchId     String?
+  batch       Batch?    @relation(fields: [batchId], references: [id])
+
+  quantity          Decimal @db.Decimal(18, 4) @default(0)
+  reservedQuantity  Decimal @db.Decimal(18, 4) @default(0)
+  avgCost           Decimal @db.Decimal(18, 4) @default(0)
+
+  updatedAt DateTime @updatedAt
+
+  // Prisma gera esta constraint como UNIQUE comum (NULL != NULL), o que
+  // deixaria duplicar o saldo de produtos sem lote (batchId sempre nulo).
+  // Corrigido para NULLS NOT DISTINCT via migration manual, ver
+  // prisma/tenant/migrations/20260820143700_stock_balance_nulls_not_distinct/
+  @@unique([productId, warehouseId, batchId])
+  @@map("stock_balance")
+}
+
+/// Ledger append-only. NUNCA sofre UPDATE/DELETE pela aplicacao — apenas
+/// INSERT. Estorno e um novo movimento tipo ESTORNO que referencia o
+/// original via reversalOfId. Isso da auditoria perfeita e um Kardex
+/// reconstruivel a qualquer momento.
+model StockMovement {
+  id          String    @id @default(uuid())
+  type        MovementType
+  productId   String
+  product     Product   @relation(fields: [productId], references: [id])
+  warehouseId String
+  warehouse   Warehouse @relation("MovementWarehouse", fields: [warehouseId], references: [id])
+  batchId     String?
+  batch       Batch?    @relation(fields: [batchId], references: [id])
+
+  quantity Decimal @db.Decimal(18, 4) // sempre positiva; o `type` define o sinal do efeito no saldo
+  unitCost Decimal @db.Decimal(18, 4)
+  totalCost Decimal @db.Decimal(18, 4)
+
+  // Snapshot do saldo apos este movimento — permite montar o Kardex lendo
+  // so esta tabela, sem recalcular a partir do zero.
+  balanceAfter Decimal @db.Decimal(18, 4)
+  avgCostAfter Decimal @db.Decimal(18, 4)
+
+  reference        String?
+  notes            String?
+  idempotencyKey   String  @unique
+  reversalOfId     String?
+  reversalOf       StockMovement?  @relation("Reversal", fields: [reversalOfId], references: [id])
+  reversals        StockMovement[] @relation("Reversal")
+
+  createdByUserId String
+  createdAt       DateTime @default(now())
+
+  @@index([productId, warehouseId, createdAt])
+  @@index([warehouseId, createdAt])
+  @@map("stock_movement")
+}
+
+enum MovementType {
+  ENTRADA
+  SAIDA
+  TRANSFERENCIA_SAIDA
+  TRANSFERENCIA_ENTRADA
+  AJUSTE_POSITIVO
+  AJUSTE_NEGATIVO
+  ESTORNO
+}
+
+/// Separa "fisico" (stock_balance.quantity) de "disponivel" (fisico -
+/// reservado). Um pedido de venda reserva sem baixar; a baixa real ocorre
+/// na separacao/expedicao.
+model StockReservation {
+  id          String   @id @default(uuid())
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id])
+  warehouseId String
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
+  quantity    Decimal  @db.Decimal(18, 4)
+  status      ReservationStatus @default(ACTIVE)
+  reference   String?
+  idempotencyKey String @unique
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([productId, warehouseId, status])
+  @@map("stock_reservation")
+}
+
+enum ReservationStatus {
+  ACTIVE
+  FULFILLED
+  CANCELLED
+}
+
+/// Contagem ciclica. O saldo esperado e congelado no momento da abertura;
+/// o ajuste final gera StockMovement (nunca escreve StockBalance direto).
+model InventoryCount {
+  id          String    @id @default(uuid())
+  warehouseId String
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
+  name        String
+  status      String    @default("OPEN") // OPEN, COUNTING, RECONCILED, CANCELLED
+  createdAt   DateTime  @default(now())
+  closedAt    DateTime?
+
+  items InventoryCountItem[]
+
+  @@map("inventory_count")
+}
+
+model InventoryCountItem {
+  id                String   @id @default(uuid())
+  inventoryCountId  String
+  inventoryCount    InventoryCount @relation(fields: [inventoryCountId], references: [id], onDelete: Cascade)
+  productId         String
+  product           Product  @relation(fields: [productId], references: [id])
+  expectedQuantity  Decimal  @db.Decimal(18, 4)
+  countedQuantity   Decimal? @db.Decimal(18, 4)
+  countedAt         DateTime?
+
+  @@unique([inventoryCountId, productId])
+  @@map("inventory_count_item")
+}
+
+// ---------------------------------------------------------------------------
+// Compras
+// ---------------------------------------------------------------------------
+
+model PurchaseOrder {
+  id           String   @id @default(uuid())
+  supplierId   String
+  supplier     Supplier @relation(fields: [supplierId], references: [id])
+  warehouseId  String
+  warehouse    Warehouse @relation(fields: [warehouseId], references: [id])
+  status       PurchaseOrderStatus @default(DRAFT)
+  expectedDate DateTime?
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  items   PurchaseOrderItem[]
+  receipts GoodsReceipt[]
+
+  @@map("purchase_order")
+}
+
+enum PurchaseOrderStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  PARTIALLY_RECEIVED
+  RECEIVED
+  CANCELLED
+}
+
+model PurchaseOrderItem {
+  id               String        @id @default(uuid())
+  purchaseOrderId  String
+  purchaseOrder    PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  productId        String
+  product          Product       @relation(fields: [productId], references: [id])
+  quantity         Decimal       @db.Decimal(18, 4)
+  unitCost         Decimal       @db.Decimal(18, 4)
+  receivedQuantity Decimal       @db.Decimal(18, 4) @default(0)
+
+  receiptItems GoodsReceiptItem[]
+
+  @@map("purchase_order_item")
+}
+
+model GoodsReceipt {
+  id              String   @id @default(uuid())
+  purchaseOrderId String
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
+  idempotencyKey  String   @unique
+  receivedByUserId String
+  createdAt       DateTime @default(now())
+
+  items GoodsReceiptItem[]
+
+  @@map("goods_receipt")
+}
+
+model GoodsReceiptItem {
+  id                  String  @id @default(uuid())
+  goodsReceiptId      String
+  goodsReceipt        GoodsReceipt @relation(fields: [goodsReceiptId], references: [id], onDelete: Cascade)
+  purchaseOrderItemId String
+  purchaseOrderItem   PurchaseOrderItem @relation(fields: [purchaseOrderItemId], references: [id])
+  receivedQuantity    Decimal @db.Decimal(18, 4)
+  batchCode           String?
+  expirationDate      DateTime?
+  stockMovementId     String? // rastreia o movimento de ENTRADA gerado por este recebimento
+
+  @@map("goods_receipt_item")
+}
+
+// ---------------------------------------------------------------------------
+// Transversal
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action     String
+  entityType String
+  entityId   String
+  before     Json?
+  after      Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([userId, createdAt])
+  @@map("audit_log")
+}

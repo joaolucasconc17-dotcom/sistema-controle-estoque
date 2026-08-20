@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "baseUrl": ".",
+    "paths": {
+      "#control-client": ["./src/generated/control/index.js"],
+      "#tenant-client": ["./src/generated/tenant/index.js"]
+    }
+  },
+  "include": ["src"]
+}

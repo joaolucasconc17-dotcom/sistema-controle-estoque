@@ -1,0 +1,42 @@
+{
+  "name": "estoque-saas",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Sistema de controle de estoque multiempresa (SaaS)",
+  "workspaces": [
+    "packages/shared",
+    "packages/backend",
+    "packages/frontend"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "dev": "npm run dev --workspaces --if-present",
+    "dev:backend": "npm run dev -w @estoque/backend",
+    "dev:frontend": "npm run dev -w @estoque/frontend",
+    "build": "npm run build -w @estoque/shared && npm run build -w @estoque/backend && npm run build -w @estoque/frontend",
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "infra:up": "docker compose up -d postgres redis",
+    "infra:down": "docker compose down",
+    "infra:logs": "docker compose logs -f",
+    "control:migrate": "npm run control:migrate -w @estoque/backend",
+    "migrate:tenants": "npm run migrate:tenants -w @estoque/backend",
+    "provision:tenant": "npm run provision:tenant -w @estoque/backend"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2"
+  },
+  "allowScripts": {
+    "@prisma/client@6.19.3": true,
+    "@prisma/engines@6.19.3": true,
+    "argon2@0.41.1": true,
+    "esbuild@0.28.2": true,
+    "esbuild@0.21.5": true,
+    "msgpackr-extract@3.0.4": true,
+    "prisma@6.19.3": true
+  }
+}
