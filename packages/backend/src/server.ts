@@ -18,6 +18,7 @@ import { supplierRoutes } from "./modules/catalog/supplierRoutes.js";
 import { inventoryRoutes } from "./modules/inventory/inventoryRoutes.js";
 import { reservationRoutes } from "./modules/inventory/reservationRoutes.js";
 import { inventoryCountRoutes } from "./modules/inventory/inventoryCountRoutes.js";
+import { purchasingRoutes } from "./modules/purchasing/purchasingRoutes.js";
 
 async function buildServer() {
   const app = Fastify({ loggerInstance: logger, trustProxy: true });
@@ -54,6 +55,7 @@ async function buildServer() {
   await app.register(inventoryRoutes, { prefix: "/api/inventory" });
   await app.register(reservationRoutes, { prefix: "/api/inventory" });
   await app.register(inventoryCountRoutes, { prefix: "/api/inventory" });
+  await app.register(purchasingRoutes, { prefix: "/api/purchasing" });
 
   return app;
 }
