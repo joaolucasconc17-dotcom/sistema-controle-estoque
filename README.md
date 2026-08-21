@@ -5,30 +5,42 @@ vendido como SaaS a multiplas empresas. Cada empresa cliente (tenant) tem seu
 proprio banco de dados fisico — isolamento maximo, sem risco de vazamento de
 dados entre clientes.
 
-O plano completo de arquitetura e fases esta em
-`C:\Users\pc\.claude\plans\eager-stargazing-widget.md`.
-
 ## Status atual
 
-**Fase 0 (Fundacao) concluida e verificada de ponta a ponta:**
-monorepo, infraestrutura Docker, control plane, tenant router com pool de
-conexoes limitado (LRU), provisionamento de empresas, autenticacao JWT com
-refresh rotativo e deteccao de furto, e RBAC com 5 perfis padrao.
+Funcional de ponta a ponta: backend completo + interface web (PWA instalavel).
 
-**Fase 1 (Cadastros) concluida e verificada de ponta a ponta:**
-filiais, depositos, enderecos de estoque, unidades de medida, categorias,
-produtos (com multiplos codigos de barra e campos fiscais), fornecedores e o
-vinculo produto-fornecedor. Paginacao por cursor testada, auditoria gravando
-create/update, e checagem de permissao confirmada negando escrita para o
-perfil LEITURA enquanto libera leitura.
+| Modulo | O que faz |
+|---|---|
+| **Multiempresa** | Um banco Postgres dedicado por empresa cliente, com pool de conexoes limitado (LRU) e migrations aplicadas em N bancos |
+| **Auth e RBAC** | JWT com refresh rotativo e deteccao de reuso/furto; 5 perfis com permissoes granulares |
+| **Cadastros** | Filiais, depositos, enderecos, categorias, unidades, produtos (com codigo de barras e campos fiscais), fornecedores |
+| **Estoque** | Entrada, saida, transferencia, ajuste, estorno; ledger imutavel, custo medio ponderado movel, reservas, lote/validade, inventario ciclico, Kardex |
+| **Compras** | Pedido com aprovacao, recebimento total/parcial gerando entrada automatica, historico de preco por fornecedor |
+| **Relatorios** | Valorizacao, curva ABC, ruptura/minimo, vencimentos, giro e cobertura, produtos parados, dashboard |
+| **Frontend** | React + Vite, dark UI responsiva, PWA instalavel no celular |
 
-Rotas: `/api/org/company-units`, `/api/org/warehouses`,
-`/api/org/warehouses/:id/locations`, `/api/catalog/units-of-measure`,
-`/api/catalog/categories`, `/api/catalog/products` (+ `/by-barcode/:barcode`),
-`/api/catalog/suppliers` (+ `/:id/products` para o vinculo).
+**Ainda nao feito:** suite de testes automatizados e hardening de producao
+(metricas, backup por empresa, teste de carga). Toda a validacao ate aqui foi
+feita com scripts de smoke test manuais — incluindo teste de concorrencia real
+(100 baixas simultaneas sem perda e sem deadlock; saldo nunca fica negativo).
 
-Fases seguintes (motor de estoque, compras, relatorios, frontend) ainda nao
-foram implementadas — ver o plano acima para o roteiro completo.
+## Como rodar
+
+Alem dos passos de infraestrutura abaixo, para subir a aplicacao:
+
+```bash
+npm run dev:backend    # API em http://localhost:3333
+npm run dev:frontend   # Interface em http://localhost:5173
+```
+
+O frontend faz proxy de `/api` para o backend, entao basta abrir
+`http://localhost:5173` no navegador. Para usar no celular (mesma rede Wi-Fi),
+o Vite imprime o endereco de rede ao iniciar — e o app pode ser instalado pelo
+menu do navegador ("Adicionar a tela de inicio").
+
+Crie sua primeira empresa e usuario com `npm run provision:tenant` (ver passo 8
+do Quickstart) — nao ha cadastro publico por design: quem provisiona empresas e
+o operador do SaaS, nao o visitante.
 
 ## Arquitetura em uma imagem
 
@@ -130,7 +142,9 @@ packages/
     prisma/tenant/     schema de negocio (replicado por empresa)
     src/platform/      tenant router, auth, config, http, migrations
     src/modules/       regras de negocio por dominio (iam, catalog, inventory, ...)
-  frontend/  (ainda nao criado — Fase 5 do plano)
+  frontend/  React + Vite + Tailwind, PWA instalavel (vite-plugin-pwa)
+    src/lib/       cliente de API com refresh automatico, contexto de auth
+    src/pages/     telas por dominio (products, inventory, purchasing, reports, ...)
 ```
 
 ## Decisoes de arquitetura que valem a pena lembrar
