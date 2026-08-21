@@ -1,4 +1,5 @@
 import type { ApiErrorBody } from "@estoque/shared";
+import { IS_DEMO_MODE } from "./demo/demoFlag.js";
 
 const ACCESS_TOKEN_KEY = "estoque.accessToken";
 const REFRESH_TOKEN_KEY = "estoque.refreshToken";
@@ -81,6 +82,26 @@ interface RequestOptions {
 }
 
 export async function apiFetch<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  // Curto-circuito do modo demonstracao: quando ligado, nenhuma requisicao
+  // de rede acontece — os dados vem do proprio bundle. Desligado (default),
+  // este bloco inteiro e ignorado, o import dinamico nunca roda, e o codigo
+  // de demo sai do bundle final.
+  if (IS_DEMO_MODE) {
+    const { resolveDemoResponse, DEMO_WRITE_BLOCKED } = await import("./demo/demoApi.js");
+    const demo = resolveDemoResponse(path, options.method ?? "GET");
+    if (demo === DEMO_WRITE_BLOCKED) {
+      throw new ApiError(
+        "FORBIDDEN",
+        "Modo demonstracao: as alteracoes estao desabilitadas nesta versao publica.",
+        403,
+      );
+    }
+    if (demo === undefined) {
+      throw new ApiError("NOT_FOUND", `Rota nao disponivel no modo demonstracao: ${path}`, 404);
+    }
+    return demo as T;
+  }
+
   const accessToken = tokenStore.getAccess();
 
   const res = await fetch(`${API_BASE_URL}${path}`, {

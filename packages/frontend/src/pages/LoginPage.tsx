@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "../lib/auth";
 import { ApiError } from "../lib/apiClient";
+import { IS_DEMO_MODE } from "../lib/demo/demoFlag";
 
 export function LoginPage() {
   const { user, login, loading } = useAuth();
@@ -12,6 +13,9 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  // No modo demonstracao nao existe login: quem cair aqui (ex.: link antigo
+  // direto para /login) vai direto para o sistema.
+  if (IS_DEMO_MODE) return <Navigate to="/" replace />;
   if (!loading && user) return <Navigate to="/" replace />;
 
   async function handleSubmit(e: FormEvent) {
