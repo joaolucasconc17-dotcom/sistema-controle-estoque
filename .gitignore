@@ -24,3 +24,12 @@ Thumbs.db
 !.vscode/extensions.json
 
 packages/frontend/dev-dist/
+
+# Workflow de deploy automatico do GitHub Pages.
+#
+# Fica de fora do versionamento por ora: empurrar arquivos em
+# .github/workflows/ exige o escopo OAuth 'workflow' no token, que nao foi
+# concedido — sem isso o push do branch inteiro e rejeitado. O arquivo
+# existe no disco e esta pronto; ver secao "Deploy automatico" no README
+# para ativar (gh auth refresh -s workflow, remover esta linha, commitar).
+.github/workflows/
