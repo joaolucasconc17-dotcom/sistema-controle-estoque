@@ -3,6 +3,17 @@ import type { ApiErrorBody } from "@estoque/shared";
 const ACCESS_TOKEN_KEY = "estoque.accessToken";
 const REFRESH_TOKEN_KEY = "estoque.refreshToken";
 
+/**
+ * Em dev, o Vite faz proxy de "/api" para o backend local (vite.config.ts),
+ * entao um caminho relativo basta. Em producao — especialmente hospedagem
+ * estatica pura como GitHub Pages, que nao tem como fazer proxy nenhum —
+ * o backend mora em outro dominio, entao a URL completa precisa vir de
+ * VITE_API_BASE_URL (definida no build). Sem essa variavel, o app ainda
+ * sobe e mostra a tela de login, mas toda chamada de API falha — e
+ * exatamente o caso de uma instancia so-frontend sem backend publicado.
+ */
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api";
+
 export class ApiError extends Error {
   constructor(
     public readonly code: string,
@@ -42,7 +53,7 @@ async function refreshAccessToken(): Promise<string> {
     const refreshToken = tokenStore.getRefresh();
     if (!refreshToken) throw new ApiError("UNAUTHORIZED", "Sem sessao", 401);
 
-    const res = await fetch("/api/auth/refresh", {
+    const res = await fetch(`${API_BASE_URL}/auth/refresh`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ refreshToken }),
@@ -72,7 +83,7 @@ interface RequestOptions {
 export async function apiFetch<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const accessToken = tokenStore.getAccess();
 
-  const res = await fetch(`/api${path}`, {
+  const res = await fetch(`${API_BASE_URL}${path}`, {
     method: options.method ?? "GET",
     headers: {
       ...(options.body !== undefined ? { "Content-Type": "application/json" } : {}),

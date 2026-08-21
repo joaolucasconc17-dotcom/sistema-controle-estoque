@@ -132,6 +132,55 @@ curl -X POST http://localhost:3333/api/auth/login \
 | `npm run migrate:tenants` | Aplica migrations pendentes em TODAS as empresas ativas |
 | `npm run typecheck` / `npm test` | Roda em todos os workspaces |
 
+## Deploy
+
+### Frontend — GitHub Pages (automatico)
+
+O frontend e uma SPA estatica (React + Vite, sem SSR), entao e compativel com
+GitHub Pages. Publicado em:
+
+**https://joaolucasconc17-dotcom.github.io/sistema-controle-estoque/**
+
+Automatico via `.github/workflows/deploy-pages.yml`: todo push em `main` que
+toca `packages/frontend/**` ou `packages/shared/**` builda e publica de novo
+sozinho (tambem pode ser disparado manualmente pela aba Actions —
+`workflow_dispatch`). Sem servidor prprio pra manter, sem custo.
+
+Duas coisas que o build precisa saber e que so existem em CI (nao em dev
+local, que usa os defaults abaixo):
+
+- `VITE_BASE_PATH=/sistema-controle-estoque/` — Pages de projeto serve numa
+  subpasta, nao na raiz do dominio; sem isso os assets dao 404. Setado
+  automaticamente no workflow a partir do nome do repositorio.
+- `VITE_API_BASE_URL` — URL publica do backend (ver abaixo). Configurar como
+  *repository variable* (Settings → Secrets and variables → Actions →
+  Variables) quando o backend estiver hospedado; sem essa variavel o site
+  sobe e a tela de login aparece, mas toda chamada de API falha (nao tem
+  como o Pages, que so serve arquivo estatico, saber onde o backend mora).
+
+Roteamento client-side (React Router) funciona no Pages graças ao truque
+padrao `public/404.html` + script de restauracao no `index.html`
+(https://github.com/rafgraph/spa-github-pages) — sem isso, atualizar a
+pagina numa rota interna como `/products` cairia num 404 de verdade.
+
+### Backend — ainda nao publicado
+
+**GitHub Pages so serve arquivo estatico — nao roda o backend.** O Fastify +
+Postgres por empresa (ver arquitetura acima) precisa de um processo Node
+rodando de verdade e de bancos Postgres acessiveis pela internet, que e
+exatamente o que Pages nao oferece.
+
+Prescricao para quando for hospedar o backend: **Render** (nao Vercel) — o
+motivo e o tipo de carga. Vercel e otimizado pra funcoes serverless de vida
+curta; este backend mantem `PrismaClient` de longa duracao em memoria por
+tenant (`TenantConnectionManager`, ver decisoes de arquitetura abaixo) e
+depende de conexao persistente com Postgres, o que cai bem melhor num Web
+Service de processo continuo — exatamente o modelo do Render (tambem oferece
+Postgres gerenciado e Redis, os dois que este projeto ja usa). Depois de
+hospedado, definir `VITE_API_BASE_URL` como repository variable refaz o
+deploy do frontend automaticamente e a aplicacao passa a funcionar de ponta a
+ponta.
+
 ## Estrutura
 
 ```

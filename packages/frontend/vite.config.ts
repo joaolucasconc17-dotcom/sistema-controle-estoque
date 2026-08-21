@@ -2,7 +2,15 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 
+// GitHub Pages serve projetos numa subpasta (usuario.github.io/repo/), nao
+// na raiz do dominio — sem isso, os assets buildados apontariam para "/"
+// e dariam 404 no Pages. VITE_BASE_PATH so e setado no workflow de deploy
+// do Pages; localmente (sem a env var) o comportamento continua "/" como
+// sempre foi.
+const base = process.env.VITE_BASE_PATH ?? "/";
+
 export default defineConfig({
+  base,
   plugins: [
     react(),
     VitePWA({
@@ -15,7 +23,10 @@ export default defineConfig({
         theme_color: "#0f172a",
         background_color: "#0f172a",
         display: "standalone",
-        start_url: "/",
+        // Relativo ao `base` (resolvido pelo VitePWA), nao "/" fixo — assim
+        // funciona tanto na raiz quanto numa subpasta como a do Pages.
+        start_url: ".",
+        scope: ".",
         icons: [
           { src: "icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any maskable" },
         ],

@@ -7,6 +7,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#0f172a" />
     <title>Estoque — Controle de Estoque</title>
+    <script>
+      // Contraparte do redirect em public/404.html — devolve pro history
+      // do React Router o caminho que o usuario realmente pediu antes do
+      // GitHub Pages desviar pra raiz. Sem efeito fora do Pages (nunca
+      // encontra nada no sessionStorage).
+      (function () {
+        var redirect = sessionStorage.getItem("estoque.redirectPath");
+        if (!redirect) return;
+        sessionStorage.removeItem("estoque.redirectPath");
+        var base = "/sistema-controle-estoque";
+        var target = redirect.indexOf(base) === 0 ? redirect.slice(base.length) || "/" : redirect;
+        history.replaceState(null, "", base + target);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
