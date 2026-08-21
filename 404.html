@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Estoque</title>
+    <script>
+      // GitHub Pages so serve arquivos estaticos: nao existe servidor pra
+      // decidir "essa rota e da SPA, devolve o index.html". Ao acessar (ou
+      // dar F5 em) uma rota interna como /products, o Pages cai aqui.
+      // Guardamos o caminho pedido e mandamos pra raiz — o script no
+      // index.html devolve esse caminho pro history do React Router.
+      // Padrao conhecido: https://github.com/rafgraph/spa-github-pages
+      sessionStorage.setItem(
+        "estoque.redirectPath",
+        location.pathname + location.search + location.hash,
+      );
+      location.replace("/sistema-controle-estoque/");
+    </script>
+  </head>
+  <body></body>
+</html>
