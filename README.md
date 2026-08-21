@@ -134,34 +134,62 @@ curl -X POST http://localhost:3333/api/auth/login \
 
 ## Deploy
 
-### Frontend — GitHub Pages (automatico)
+### Frontend — GitHub Pages (publicado)
 
 O frontend e uma SPA estatica (React + Vite, sem SSR), entao e compativel com
-GitHub Pages. Publicado em:
+GitHub Pages. **No ar em:**
 
 **https://joaolucasconc17-dotcom.github.io/sistema-controle-estoque/**
 
-Automatico via `.github/workflows/deploy-pages.yml`: todo push em `main` que
-toca `packages/frontend/**` ou `packages/shared/**` builda e publica de novo
-sozinho (tambem pode ser disparado manualmente pela aba Actions —
-`workflow_dispatch`). Sem servidor prprio pra manter, sem custo.
+Publicado a partir da branch `gh-pages` (Pages configurado com
+`build_type=legacy`, source `gh-pages` / raiz). Para republicar apos mudancas
+no frontend:
 
-Duas coisas que o build precisa saber e que so existem em CI (nao em dev
-local, que usa os defaults abaixo):
+```bash
+npm run build -w @estoque/shared
+cd packages/frontend
+VITE_BASE_PATH=/sistema-controle-estoque/ npx vite build
+#   (no Git Bash do Windows, prefixe com MSYS_NO_PATHCONV=1 — senao o shell
+#    converte "/sistema-..." num caminho tipo "C:/Program Files/Git/...")
 
-- `VITE_BASE_PATH=/sistema-controle-estoque/` — Pages de projeto serve numa
-  subpasta, nao na raiz do dominio; sem isso os assets dao 404. Setado
-  automaticamente no workflow a partir do nome do repositorio.
-- `VITE_API_BASE_URL` — URL publica do backend (ver abaixo). Configurar como
-  *repository variable* (Settings → Secrets and variables → Actions →
-  Variables) quando o backend estiver hospedado; sem essa variavel o site
-  sobe e a tela de login aparece, mas toda chamada de API falha (nao tem
-  como o Pages, que so serve arquivo estatico, saber onde o backend mora).
+# publicar o conteudo de dist/ na branch gh-pages
+cd ../..
+git worktree add --orphan -b gh-pages /tmp/gh-pages-worktree   # so na 1a vez
+cp -r packages/frontend/dist/. /tmp/gh-pages-worktree/
+touch /tmp/gh-pages-worktree/.nojekyll
+cd /tmp/gh-pages-worktree && git add -A && git commit -m "deploy" && git push
+```
+
+Duas variaveis de ambiente controlam o build (ambas com default sensato pra
+dev local, entao `npm run dev:frontend` continua funcionando sem configurar
+nada):
+
+- `VITE_BASE_PATH` — Pages de projeto serve numa subpasta
+  (`usuario.github.io/repo/`), nao na raiz do dominio; sem isso os assets dao
+  404. Default: `/`.
+- `VITE_API_BASE_URL` — URL publica do backend (ver secao abaixo). Sem ela, o
+  site sobe e a tela de login aparece, mas toda chamada de API falha — nao ha
+  como o Pages, que so serve arquivo estatico, saber onde o backend mora.
+  Default: `/api` (funciona em dev pelo proxy do Vite).
 
 Roteamento client-side (React Router) funciona no Pages graças ao truque
 padrao `public/404.html` + script de restauracao no `index.html`
 (https://github.com/rafgraph/spa-github-pages) — sem isso, atualizar a
 pagina numa rota interna como `/products` cairia num 404 de verdade.
+
+#### Deploy automatico (opcional, ainda nao ativo)
+
+Existe um workflow pronto em `.github/workflows/deploy-pages.yml` que faz
+build + deploy a cada push. Ele **nao esta no repositorio remoto**: empurrar
+arquivos em `.github/workflows/` exige o escopo OAuth `workflow` no token do
+`gh`, que nao foi concedido. Para ativar depois:
+
+```bash
+gh auth refresh -h github.com -s workflow   # aprovar no navegador
+git push                                     # o commit ja existe localmente
+# e trocar Pages para build_type=workflow:
+gh api -X PUT repos/OWNER/REPO/pages -f "build_type=workflow"
+```
 
 ### Backend — ainda nao publicado
 
